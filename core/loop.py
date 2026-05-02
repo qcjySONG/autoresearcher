@@ -45,6 +45,7 @@ class ResearchLoop:
         # Core components
         self.memory = MemoryManager(
             project_dir=self.project_dir,
+            workspace_dir=self.workspace,
             brief_max=config.get("memory", {}).get("brief_max_chars", 3000),
             log_max=config.get("memory", {}).get("log_max_chars", 2000),
             milestone_max=config.get("memory", {}).get("milestone_max_chars", 1200),
@@ -100,6 +101,9 @@ class ResearchLoop:
             try:
                 # Keep leader context bounded to one cycle.
                 self.dispatcher.reset_leader_history()
+                
+                # Clear current cycle summary at start of new cycle
+                self.memory.clear_current_summary()
 
                 # Check for human directive
                 directive = self._consume_directive()
@@ -217,13 +221,57 @@ class ResearchLoop:
         agent_type = plan.get("agent", "code")
         task_description = plan.get("task", "")
 
+        # Build context for code agent: accumulated exploration history
+        context = {}
+        if agent_type == "code":
+            context["exploration_history"] = self.memory.get_code_agent_context(self.cycle_count)
+
         result = self.dispatcher.dispatch_worker(
             agent_type=agent_type,
             task=task_description,
             tool_registry=self.tools,
+            context=context if context else None,
         )
 
+        # After code agent completes, invoke summarizer to compress the exploration
+        if agent_type == "code" and result.get("tool_calls"):
+            summary = self._summarize_cycle(result, task_description)
+            if summary:
+                self.memory.save_cycle_summary(summary, self.cycle_count)
+
         return result
+
+    def _summarize_cycle(self, execute_result: dict, task: str) -> str:
+        """Invoke summarizer agent to compress code agent's exploration into a summary."""
+        logger.info("Summarizing cycle exploration...")
+        
+        # Build summarizer input from tool execution log
+        tool_log_text = ""
+        for tool_call in execute_result.get("_tool_results_log", []):
+            tool_log_text += f"Tool: {tool_call['name']}\nArgs: {tool_call['args']}\nOutput: {tool_call['output']}\n\n"
+        
+        summarizer_task = f"""Task given to code agent: {task}
+
+Tool Execution Log:
+{tool_log_text}
+
+Final Response:
+{execute_result.get('response', '')[:2000]}
+
+Please generate a concise exploration summary following the format in summarizer.md."""
+
+        try:
+            summary_result = self.dispatcher.dispatch_worker(
+                agent_type="summarizer",
+                task=summarizer_task,
+                tool_registry=self.tools,  # Will be ignored (no tools for summarizer)
+                context=None,
+            )
+            return summary_result.get("response", "")
+        except Exception as e:
+            logger.warning(f"Summarizer failed: {e}")
+            # Fallback: create minimal summary from tool results
+            return f"## Cycle {self.cycle_count} Summary\n\n**Task**: {task[:200]}\n\nTools used: {execute_result.get('tool_calls', 0)} calls\n\nNote: Detailed summary generation failed."
 
     def _monitor_experiment(self, execute_result: dict) -> dict:
         """Monitor running experiment with ZERO LLM calls."""
@@ -244,11 +292,15 @@ class ResearchLoop:
         """REFLECT phase: evaluate results and update memory."""
         logger.info("REFLECT phase starting...")
 
+        # Get code agent exploration summaries for reflection context
+        code_agent_context = self.memory.get_code_agent_context(self.cycle_count)
+        
         context = {
             "brief": self.memory.get_brief(),
             "memory_log": self.memory.get_log(),
             "experiment_result": execute_result,
             "cycle": self.cycle_count,
+            "code_agent_exploration": code_agent_context,  # Add exploration history for better reflection
         }
 
         result = self.dispatcher.dispatch_leader(

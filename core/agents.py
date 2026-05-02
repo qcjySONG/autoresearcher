@@ -66,6 +66,11 @@ class AgentDispatcher:
             "max_turns": 30,
             "tools": ["write_file", "read_file", "list_files"],
         },
+        "summarizer": {
+            "prompt_file": "summarizer.md",
+            "max_turns": 3,
+            "tools": [],  # Summarizer only processes text, no tools needed
+        },
     }
 
     # Model mapping between providers
@@ -80,14 +85,15 @@ class AgentDispatcher:
     # Supported providers:
     #   "anthropic"  — Anthropic-compatible SDK endpoint (default auth env: ANTHROPIC_API_KEY)
     #   "openai"     — OpenAI-compatible SDK endpoint (default auth env: OPENAI_API_KEY)
+    #   "deepseek"   — DeepSeek-compatible SDK endpoint (default auth env: DEEPSEEK_API_KEY)
     #   "claude_cli" — `claude -p` subprocess, uses Claude Code / Pro / Max subscription
     #   "codex_cli"  — `codex exec` subprocess, uses ChatGPT Plus / Pro subscription
-    SUPPORTED_PROVIDERS = ("anthropic", "openai", "claude_cli", "codex_cli")
+    SUPPORTED_PROVIDERS = ("anthropic", "openai", "deepseek", "claude_cli", "codex_cli")
 
     def __init__(
         self,
-        model: str = "claude-sonnet-4-6",
-        provider: str = "anthropic",
+        model: str = "deepseek-v4-flash",
+        provider: str = "deepseek",
         max_steps: int = 3,
         base_url: Optional[str] = None,
         api_key: Optional[str] = None,
@@ -142,7 +148,7 @@ class AgentDispatcher:
 
         return self._parse_leader_response(response)
 
-    def dispatch_worker(self, agent_type: str, task: str, tool_registry) -> dict:
+    def dispatch_worker(self, agent_type: str, task: str, tool_registry, context: Optional[dict] = None) -> dict:
         """Dispatch a task to a worker agent and run its tool-use loop.
 
         Workers are stateless across dispatches — each call starts with a
@@ -154,6 +160,7 @@ class AgentDispatcher:
         Args:
             agent_type: "idea", "code", or "writing".
             task: Task description from the Leader.
+            context: Optional context dict for accumulating exploration history.
             tool_registry: ToolRegistry that provides `get_tools_for` and
                 `execute_tool`. The registry itself is passed in so this
                 module does not have a hard import dependency on tools.py.
@@ -197,7 +204,18 @@ class AgentDispatcher:
 
         logger.info(f"Dispatching {agent_type} agent: {task[:100]}...")
 
-        messages = [{"role": "user", "content": task}]
+        # Prepend context (e.g., exploration history) if provided
+        user_content = task
+        if context:
+            # Accumulate context for agents that need historical information
+            context_str = ""
+            for key, value in context.items():
+                if value:
+                    context_str += f"## {key}\n{value}\n\n"
+            if context_str:
+                user_content = context_str + "## Current Task\n" + task
+        
+        messages = [{"role": "user", "content": user_content}]
         last_response = ""
         tool_results_log: list[dict] = []
 
@@ -344,6 +362,8 @@ class AgentDispatcher:
             return self._call_claude_cli(system, messages)
         if self.provider == "codex_cli":
             return self._call_codex_cli(system, messages)
+        if self.provider == "deepseek":
+            return self._call_deepseek(system, messages)
         if self.provider == "openai":
             return self._call_openai(system, messages)
         return self._call_anthropic(system, messages)
@@ -409,6 +429,45 @@ class AgentDispatcher:
                 model=model,
                 max_tokens=4096,
                 messages=api_messages,
+            )
+
+            return response.choices[0].message.content
+
+        except ImportError:
+            logger.warning("openai package not installed. Using mock response.")
+            return json.dumps({"action": "wait", "reason": "LLM not available"})
+
+
+    def _call_deepseek(self, system: str, messages: list) -> str:
+        """Call DeepSeek chat completions API with thinking enabled.
+        
+        Uses deepseek-v4-flash model with reasoning_effort="high" and 
+        extra_body={"thinking": {"type": "enabled"}} to enable the thinking model.
+        API key is read from DEEPSEEK_API_KEY environment variable via config.
+        """
+        try:
+            import openai
+
+            client_kwargs = {}
+            if self.base_url:
+                client_kwargs["base_url"] = self.base_url
+            if self.api_key:
+                client_kwargs["api_key"] = self.api_key
+            client = openai.OpenAI(**client_kwargs)
+
+            api_messages = [{"role": "system", "content": system}]
+            for msg in messages:
+                api_messages.append({
+                    "role": msg["role"],
+                    "content": msg["content"],
+                })
+
+            response = client.chat.completions.create(
+                model=self.model,
+                max_tokens=4096,
+                messages=api_messages,
+                reasoning_effort="high",
+                extra_body={"thinking": {"type": "enabled"}}
             )
 
             return response.choices[0].message.content
@@ -633,6 +692,8 @@ class AgentDispatcher:
         result = {"agent": agent_type, "response": response}
         if tool_results:
             result["tool_calls"] = len(tool_results)
+            # Store full tool results log for summarizer to use
+            result["_tool_results_log"] = tool_results
 
         if agent_type == "code":
             # Prefer authoritative tool-result data over text parsing.

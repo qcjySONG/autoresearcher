@@ -283,8 +283,10 @@ def main():
 
     project_dir = Path(args.project).resolve()
     config = _load_config(project_dir, args.config)
+    workspace_dir = project_dir / config.get("project", {}).get("workspace", "workspace")
     memory = MemoryManager(
         project_dir=project_dir,
+        workspace_dir=workspace_dir,
         brief_max=config.get("memory", {}).get("brief_max_chars", 3000),
         log_max=config.get("memory", {}).get("log_max_chars", 2000),
         milestone_max=config.get("memory", {}).get("milestone_max_chars", 1200),
@@ -292,7 +294,7 @@ def main():
     )
     backend = build_execution_backend(
         config=config,
-        controller_workspace=project_dir / config.get("project", {}).get("workspace", "workspace"),
+        controller_workspace=workspace_dir,
     )
     exporter = ObsidianExporter(config=config, project_dir=project_dir, backend=backend)
     cycle_path = project_dir / config.get("project", {}).get("workspace", "workspace") / ".cycle_counter"
