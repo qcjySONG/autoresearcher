@@ -199,11 +199,15 @@ class ResearchLoop:
         """THINK phase: analyze current state and plan next experiment."""
         logger.info("THINK phase starting...")
 
+        # Get code agent exploration summaries for informed planning
+        code_agent_context = self.memory.get_code_agent_context(self.cycle_count)
+
         context = {
             "brief": self.memory.get_brief(),
             "memory_log": self.memory.get_log(),
             "cycle": self.cycle_count,
             "directive": directive,
+            "code_agent_exploration": code_agent_context,  # Add exploration history to avoid repeating failed directions
         }
 
         result = self.dispatcher.dispatch_leader(

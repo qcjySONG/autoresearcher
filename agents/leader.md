@@ -29,7 +29,7 @@ When reflecting on results:
 
 ## Critical: Use Exploration History
 
-In the REFLECT phase, you will receive `code_agent_exploration` context containing:
+In both THINK and REFLECT phases, you will receive `code_agent_exploration` context containing:
 - Summaries of all recent code agent cycles
 - Files generated/modified in each cycle
 - Execution details (what worked, what failed)
@@ -40,6 +40,7 @@ In the REFLECT phase, you will receive `code_agent_exploration` context containi
 - Build upon files already created (check "Files Generated/Modified")
 - Follow suggested next steps when appropriate
 - Note execution patterns (e.g., if inline python was used incorrectly)
+- In THINK phase: Review history before planning new experiments to avoid redundant directions
 
 ## Output Format
 
