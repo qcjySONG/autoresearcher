@@ -27,6 +27,20 @@ When reflecting on results:
 3. Should we iterate on this direction or pivot?
 4. What milestone should be recorded?
 
+## Critical: Use Exploration History
+
+In the REFLECT phase, you will receive `code_agent_exploration` context containing:
+- Summaries of all recent code agent cycles
+- Files generated/modified in each cycle
+- Execution details (what worked, what failed)
+- Lessons learned and suggested next steps
+
+**USE THIS INFORMATION** to make informed decisions:
+- Avoid repeating failed approaches mentioned in "Lessons Learned"
+- Build upon files already created (check "Files Generated/Modified")
+- Follow suggested next steps when appropriate
+- Note execution patterns (e.g., if inline python was used incorrectly)
+
 ## Output Format
 
 Always respond with a JSON block:
@@ -50,3 +64,4 @@ Always respond with a JSON block:
 - Maximum 3 sub-agent dispatches per cycle
 - Always include success criteria for experiments
 - Prefer small, fast experiments over large ambitious ones
+- In REFLECT phase, always review code_agent_exploration before deciding next steps

@@ -20,6 +20,7 @@ agent:
   # Provider:
   #   "anthropic"  — Anthropic-compatible SDK endpoint (default auth env: ANTHROPIC_API_KEY)
   #   "openai"     — OpenAI-compatible SDK endpoint (default auth env: OPENAI_API_KEY)
+  #   "deepseek"   — DeepSeek-compatible SDK endpoint (default auth env: DEEPSEEK_API_KEY)
   #   "claude_cli" — subprocess, reuses Claude Code / Pro / Max subscription
   #   "codex_cli"  — subprocess, reuses ChatGPT Plus / Pro subscription
   #
@@ -35,17 +36,18 @@ agent:
   # so it will silently bypass the ToolRegistry and lose PID tracking. Use it
   # for the leader/think path only; keep one of the three other providers for
   # worker dispatches.
-  provider: "anthropic"
+  provider: "deepseek"
 
   # Model selection per provider:
   #   anthropic:  claude-sonnet-4-6 (fast) | claude-opus-4-6 (strongest)
   #   openai:     codex-5.3 (fast)         | gpt-5.4 (strongest)
+  #   deepseek:   deepseek-v4-flash (with thinking enabled)
   #                or any OpenAI-compatible model id such as qwen / glm / minimax
   #   claude_cli: whichever model your `claude` CLI is configured to use
   #   codex_cli:  whichever model your `codex` CLI is configured to use
-  model: "claude-sonnet-4-6"
+  model: "deepseek-v4-flash"
   base_url: ""                    # Optional compatible API endpoint override
-  api_key_env: ""                 # Optional custom key env, e.g. DASHSCOPE_API_KEY
+  api_key_env: "DEEPSEEK_API_KEY"                 # Optional custom key env, e.g. DASHSCOPE_API_KEY
   auth_token_env: ""              # Optional bearer-token env for anthropic-compatible endpoints
 
   max_cycles: -1                  # -1 = run forever
