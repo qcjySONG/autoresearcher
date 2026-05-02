@@ -652,6 +652,10 @@ class AgentDispatcher:
         parts.append(f"## Memory Log\n{context.get('memory_log', 'N/A')}\n")
         parts.append(f"## Cycle: {context.get('cycle', 'N/A')}\n")
 
+        # Add code agent exploration history (critical for informed decisions)
+        if context.get("code_agent_exploration"):
+            parts.append(f"## Code Agent Exploration History\n{context['code_agent_exploration']}\n")
+
         if context.get("experiment_result"):
             parts.append(f"## Experiment Result\n{json.dumps(context['experiment_result'], indent=2)}\n")
 
